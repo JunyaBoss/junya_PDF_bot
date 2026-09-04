@@ -32,7 +32,7 @@ bot.on("photo", (msg) => {
   bot.sendMessage(chatId, `✅ Photo save (Total: ${userPhotos[chatId].length})`);
 });
 
-bot.onText(/\/done/, async (msg) => {
+bot.onText(/\/many/, async (msg) => {
   const chatId = msg.chat.id;
 
   if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
@@ -83,7 +83,7 @@ bot.onText(/\/done/, async (msg) => {
 
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
-    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /done karo – purani photos delete ho chuki hain.");
+    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /many karo – purani photos delete ho chuki hain.");
 
   } catch (error) {
     bot.sendMessage(chatId, "❌ Error! Please try again.");
