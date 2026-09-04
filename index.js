@@ -5,9 +5,9 @@ const fs = require("fs");
 const express = require("express");
 const sizeOf = require("image-size");
 
-const token = "YOUR_BOT_TOKEN_HERE"; // 👈 Apna token daalein
+const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA"; // 👈 Apna token
 
-// Express (Railway/Render ke liye)
+// Express server for 24/7 (Railway/Render)
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running'));
 const port = process.env.PORT || 3000;
@@ -15,13 +15,13 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Har user ke liye photos store karte hain
-const userPhotos = {}; // { chatId: [file_id1, file_id2, ...] }
+// Store photos per user
+const userPhotos = {};
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  userPhotos[chatId] = []; // Reset
-  bot.sendMessage(chatId, "📸 Photos bhejo, phir /done karke PDF banao.\nEk baar /done karne par saari photos ki ek PDF aayegi aur memory clear ho jaayegi.");
+  userPhotos[chatId] = [];
+  bot.sendMessage(chatId, "📸 PDF file banane ke liye .jpg ya .png photos bhejo.\nJab saari photos bhej den, toh /done karke PDF bana lo.");
 });
 
 bot.on("photo", (msg) => {
@@ -36,10 +36,10 @@ bot.onText(/\/done/, async (msg) => {
   const chatId = msg.chat.id;
 
   if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
-    return bot.sendMessage(chatId, "❌ Pehle photos bhejo!");
+    return bot.sendMessage(chatId, "❌ Pehle kuch photos bhejo!");
   }
 
-  // 📌 Saari photos ko copy karke memory clear kar do (taaki duplicate na ho)
+  // Copy photos and clear memory immediately
   const photosToProcess = [...userPhotos[chatId]];
   userPhotos[chatId] = []; // ✅ Purani photos delete
 
@@ -52,8 +52,7 @@ bot.onText(/\/done/, async (msg) => {
     const writeStream = fs.createWriteStream(pdfPath);
     doc.pipe(writeStream);
 
-    let processed = 0,
-        skipped = 0;
+    let processed = 0, skipped = 0;
 
     for (let i = 0; i < photosToProcess.length; i++) {
       try {
@@ -65,11 +64,6 @@ bot.onText(/\/done/, async (msg) => {
         doc.addPage({ size: [width, height] });
         doc.image(imageBuffer, 0, 0, { width, height });
         processed++;
-
-        // Agar 20+ photos hain toh har 10 par progress dikhao
-        if (total > 20 && (processed % 10 === 0 || processed === total)) {
-          await bot.sendMessage(chatId, `📌 ${processed}/${total} images added.`);
-        }
       } catch (err) {
         skipped++;
         console.error(`Image ${i+1} failed:`, err.message);
@@ -82,7 +76,7 @@ bot.onText(/\/done/, async (msg) => {
       writeStream.on('error', reject);
     });
 
-    // 📤 PDF bhejo
+    // Send single PDF
     await bot.sendDocument(chatId, pdfPath, {
       caption: `✅ PDF ready!\n✅ Added: ${processed}\n⚠️ Skipped: ${skipped}`
     });
