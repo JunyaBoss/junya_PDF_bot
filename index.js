@@ -5,9 +5,9 @@ const fs = require("fs");
 const express = require("express");
 const sizeOf = require("image-size");
 
-const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA";
+const token = "YOUR_BOT_TOKEN_HERE"; // 👈 Apna token daalein
 
-// Express for 24/7 hosting
+// Express (Railway/Render ke liye)
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running'));
 const port = process.env.PORT || 3000;
@@ -15,38 +15,36 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Per-user data: { photos: [file_ids], lastIndex: number }
-const userData = {};
+// Har user ke liye photos store karte hain
+const userPhotos = {}; // { chatId: [file_id1, file_id2, ...] }
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  userData[chatId] = { photos: [], lastIndex: 0 };
-  bot.sendMessage(chatId, "📸 Photos bhejo, phir /done karke PDF banao.\nHar /done sirf **naye** photos ki PDF banayega.");
+  userPhotos[chatId] = []; // Reset
+  bot.sendMessage(chatId, "📸 Photos bhejo, phir /done karke PDF banao.\nEk baar /done karne par saari photos ki ek PDF aayegi aur memory clear ho jaayegi.");
 });
 
 bot.on("photo", (msg) => {
   const chatId = msg.chat.id;
-  if (!userData[chatId]) userData[chatId] = { photos: [], lastIndex: 0 };
+  if (!userPhotos[chatId]) userPhotos[chatId] = [];
   const photo = msg.photo[msg.photo.length - 1];
-  userData[chatId].photos.push(photo.file_id);
-  bot.sendMessage(chatId, `✅ Photo save (Total: ${userData[chatId].photos.length})`);
+  userPhotos[chatId].push(photo.file_id);
+  bot.sendMessage(chatId, `✅ Photo save (Total: ${userPhotos[chatId].length})`);
 });
 
 bot.onText(/\/done/, async (msg) => {
   const chatId = msg.chat.id;
-  const data = userData[chatId];
-  if (!data || data.photos.length === data.lastIndex) {
-    return bot.sendMessage(chatId, "❌ Koi nayi photo nahi hai. Pehle photos bhejo.");
+
+  if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
+    return bot.sendMessage(chatId, "❌ Pehle photos bhejo!");
   }
 
-  // Sirf un photos ko lo jo last /done ke baad aayi hain
-  const newPhotos = data.photos.slice(data.lastIndex);
-  const total = newPhotos.length;
+  // 📌 Saari photos ko copy karke memory clear kar do (taaki duplicate na ho)
+  const photosToProcess = [...userPhotos[chatId]];
+  userPhotos[chatId] = []; // ✅ Purani photos delete
 
-  // ✅ Pehle hi lastIndex update karo taaki agar user dubara /done dabaye toh koi duplicate na ho
-  data.lastIndex = data.photos.length;
-
-  bot.sendMessage(chatId, `⏳ ${total} nayi photos se PDF ban raha hai...`);
+  const total = photosToProcess.length;
+  bot.sendMessage(chatId, `⏳ ${total} photos ki ek PDF ban rahi hai...`);
 
   try {
     const pdfPath = `Converted_Document_${chatId}_${Date.now()}.pdf`;
@@ -54,11 +52,12 @@ bot.onText(/\/done/, async (msg) => {
     const writeStream = fs.createWriteStream(pdfPath);
     doc.pipe(writeStream);
 
-    let processed = 0, skipped = 0;
+    let processed = 0,
+        skipped = 0;
 
-    for (let i = 0; i < newPhotos.length; i++) {
+    for (let i = 0; i < photosToProcess.length; i++) {
       try {
-        const fileLink = await bot.getFileLink(newPhotos[i]);
+        const fileLink = await bot.getFileLink(photosToProcess[i]);
         const response = await axios.get(fileLink, { responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(response.data, 'binary');
         const { width, height } = sizeOf(imageBuffer);
@@ -67,7 +66,7 @@ bot.onText(/\/done/, async (msg) => {
         doc.image(imageBuffer, 0, 0, { width, height });
         processed++;
 
-        // Progress update sirf tab jab 20+ photos ho aur har 10 par
+        // Agar 20+ photos hain toh har 10 par progress dikhao
         if (total > 20 && (processed % 10 === 0 || processed === total)) {
           await bot.sendMessage(chatId, `📌 ${processed}/${total} images added.`);
         }
@@ -83,18 +82,17 @@ bot.onText(/\/done/, async (msg) => {
       writeStream.on('error', reject);
     });
 
-    // ✅ Ek hi PDF bhejo
+    // 📤 PDF bhejo
     await bot.sendDocument(chatId, pdfPath, {
       caption: `✅ PDF ready!\n✅ Added: ${processed}\n⚠️ Skipped: ${skipped}`
     });
 
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
-    // Next /done ke liye hint
-    bot.sendMessage(chatId, "📌 Ab aur photos bhejo aur /done karo – sirf naye photos ki PDF banegi.");
+    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /done karo – purani photos delete ho chuki hain.");
 
   } catch (error) {
-    bot.sendMessage(chatId, "❌ Error! Try again.");
+    bot.sendMessage(chatId, "❌ Error! Please try again.");
     console.error(error);
   }
 });
