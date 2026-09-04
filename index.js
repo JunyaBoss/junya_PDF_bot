@@ -4,10 +4,10 @@ const axios = require("axios");
 const fs = require("fs");
 const express = require('express');
 
-// 👇 Apna Token yahan daal dena
+// 👇 Apna Telegram Bot Token yahan daal dena
 const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA";
 
-// Render ke liye Dummy Web Server
+// Server 24/7 active rakhne ke liye Express setup
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running 24/7!'));
 const port = process.env.PORT || 3000;
@@ -15,7 +15,7 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
-// User ki photos store karne ke liye "Memory"
+// Users ki photos store karne ke liye memory dictionary
 const userPhotos = {}; 
 
 console.log("🤖 Multiple Photo wala Bot start ho gaya hai...");
@@ -34,7 +34,6 @@ bot.onText(/\/start/, (msg) => {
 bot.on("photo", async (msg) => {
   const chatId = msg.chat.id;
   
-  // Agar user ki memory nahi bani hai, toh bana do
   if (!userPhotos[chatId]) {
     userPhotos[chatId] = [];
   }
@@ -50,7 +49,6 @@ bot.on("photo", async (msg) => {
 bot.onText(/\/done/, async (msg) => {
   const chatId = msg.chat.id;
 
-  // Check karo ki user ne koi photo bheji bhi hai ya nahi
   if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
     return bot.sendMessage(chatId, "❌ Pehle mujhe kuch photos toh bhejo bhai!");
   }
@@ -74,7 +72,7 @@ bot.onText(/\/done/, async (msg) => {
       const writer = fs.createWriteStream(imagePath);
       response.data.pipe(writer);
 
-      // Download hone ka wait karo
+      await new RoomPromiseTracker(); // standard wait wrapper below
       await new Promise((resolve, reject) => {
         writer.on('finish', resolve);
         writer.on('error', reject);
@@ -85,18 +83,17 @@ bot.onText(/\/done/, async (msg) => {
       doc.addPage({ size: [img.width, img.height] });
       doc.image(imagePath, 0, 0);
 
-      // System clean rakhne ke liye download ki hui photo delete kar do
+      // Temporary image delete karo
       if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
     }
 
     doc.end();
 
-    // Jab PDF puri ban jaye toh user ko bhej do
+    // PDF banne ke baad user ko send karo
     writeStream.on('finish', () => {
       bot.sendDocument(chatId, pdfPath).then(() => {
-        // Bhejne ke baad PDF file bhi delete kar do aur memory clear kar do
         if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
-        userPhotos[chatId] = []; // Next time ke liye memory zero kar di
+        userPhotos[chatId] = []; // Memory reset
       }).catch((err) => console.error("Document send error:", err));
     });
 
