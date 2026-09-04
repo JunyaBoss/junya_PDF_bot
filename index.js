@@ -7,7 +7,7 @@ const sizeOf = require("image-size");
 
 const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA"; // 👈 Apna token
 
-// Express server for 24/7 (Railway/Render)
+// Express for 24/7
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running'));
 const port = process.env.PORT || 3000;
@@ -17,11 +17,14 @@ const bot = new TelegramBot(token, { polling: true });
 
 // Store photos per user
 const userPhotos = {};
+// Processing flag – extra protection against duplicate triggers
+const isProcessing = {};
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   userPhotos[chatId] = [];
-  bot.sendMessage(chatId, "📸 PDF file banane ke liye .jpg ya .png photos bhejo.\nJab saari photos bhej den, toh /done karke PDF bana lo.");
+  isProcessing[chatId] = false;
+  bot.sendMessage(chatId, "📸 PDF banane ke liye .jpg / .png photos bhejo.\nJab saari photos bhej den, toh /done karo.");
 });
 
 bot.on("photo", (msg) => {
@@ -32,12 +35,20 @@ bot.on("photo", (msg) => {
   bot.sendMessage(chatId, `✅ Photo save (Total: ${userPhotos[chatId].length})`);
 });
 
-bot.onText(/\/many/, async (msg) => {
+bot.onText(/\/done/, async (msg) => {
   const chatId = msg.chat.id;
+
+  // Agar already processing hai toh ignore karo
+  if (isProcessing[chatId]) {
+    return bot.sendMessage(chatId, "⏳ Pehle wali PDF abhi ban rahi hai, thoda wait karo...");
+  }
 
   if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
     return bot.sendMessage(chatId, "❌ Pehle kuch photos bhejo!");
   }
+
+  // Processing flag ON
+  isProcessing[chatId] = true;
 
   // Copy photos and clear memory immediately
   const photosToProcess = [...userPhotos[chatId]];
@@ -76,17 +87,20 @@ bot.onText(/\/many/, async (msg) => {
       writeStream.on('error', reject);
     });
 
-    // Send single PDF
+    // ✅ Ek hi PDF bhejo
     await bot.sendDocument(chatId, pdfPath, {
       caption: `✅ PDF ready!\n✅ Added: ${processed}\n⚠️ Skipped: ${skipped}`
     });
 
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
-    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /many karo – purani photos delete ho chuki hain.");
+    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /done karo – purani delete ho chuki hain.");
 
   } catch (error) {
-    bot.sendMessage(chatId, "❌ Error! Please try again.");
+    bot.sendMessage(chatId, "❌ Error! Try again.");
     console.error(error);
+  } finally {
+    // Processing flag OFF
+    isProcessing[chatId] = false;
   }
 });
