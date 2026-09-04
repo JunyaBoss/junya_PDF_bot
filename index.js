@@ -5,45 +5,48 @@ const fs = require("fs");
 const express = require("express");
 const sizeOf = require("image-size");
 
-const token = "YOUR_TELEGRAM_BOT_TOKEN_HERE";
+const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA";
 
-// Express server for 24/7 hosting
+// Express for 24/7
 const app = express();
-app.get('/', (req, res) => res.send('PDF Bot is Running!'));
+app.get('/', (req, res) => res.send('PDF Bot is Running'));
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
-const userPhotos = {};
+// Har user ke liye: { photos: [file_ids], lastIndex: kitne already PDF mein gaye }
+const userData = {};
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
-  userPhotos[chatId] = [];
-  bot.sendMessage(chatId, "Welcome! 📄\nMujhe photos bhejo, phir /done karke PDF banao.");
+  userData[chatId] = { photos: [], lastIndex: 0 };
+  bot.sendMessage(chatId, "📸 Photos bhejo, phir /done karke PDF banao. Har /done sirf naye photos ki PDF banayega.");
 });
 
 bot.on("photo", (msg) => {
   const chatId = msg.chat.id;
-  if (!userPhotos[chatId]) userPhotos[chatId] = [];
+  if (!userData[chatId]) userData[chatId] = { photos: [], lastIndex: 0 };
   const photo = msg.photo[msg.photo.length - 1];
-  userPhotos[chatId].push(photo.file_id);
-  bot.sendMessage(chatId, `✅ Photo save (Total: ${userPhotos[chatId].length})`);
+  userData[chatId].photos.push(photo.file_id);
+  bot.sendMessage(chatId, `✅ Photo save (Total: ${userData[chatId].photos.length})`);
 });
 
 bot.onText(/\/done/, async (msg) => {
   const chatId = msg.chat.id;
-
-  if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
-    return bot.sendMessage(chatId, "❌ Pehle photos bhejo!");
+  const data = userData[chatId];
+  if (!data || data.photos.length === data.lastIndex) {
+    return bot.sendMessage(chatId, "❌ Koi nayi photo nahi hai /done ke baad. Pehle photos bhejo.");
   }
 
-  // ⚡ Immediately clear the list to prevent duplicate processing
-  const photosToProcess = [...userPhotos[chatId]];
-  userPhotos[chatId] = [];
+  // Sirf naye photos (lastIndex se end tak)
+  const newPhotos = data.photos.slice(data.lastIndex);
+  const total = newPhotos.length;
 
-  const total = photosToProcess.length;
-  bot.sendMessage(chatId, `⏳ ${total} photos se PDF ban raha hai...`);
+  // ✅ Pehle hi lastIndex update kar do taaki double-trigger na ho
+  data.lastIndex = data.photos.length;
+
+  bot.sendMessage(chatId, `⏳ ${total} nayi photos se PDF ban raha hai...`);
 
   try {
     const pdfPath = `Converted_Document_${chatId}_${Date.now()}.pdf`;
@@ -51,12 +54,12 @@ bot.onText(/\/done/, async (msg) => {
     const writeStream = fs.createWriteStream(pdfPath);
     doc.pipe(writeStream);
 
-    let processed = 0;
-    let skipped = 0;
+    let processed = 0,
+        skipped = 0;
 
-    for (let i = 0; i < photosToProcess.length; i++) {
+    for (let i = 0; i < newPhotos.length; i++) {
       try {
-        const fileLink = await bot.getFileLink(photosToProcess[i]);
+        const fileLink = await bot.getFileLink(newPhotos[i]);
         const response = await axios.get(fileLink, { responseType: 'arraybuffer' });
         const imageBuffer = Buffer.from(response.data, 'binary');
         const { width, height } = sizeOf(imageBuffer);
@@ -65,7 +68,6 @@ bot.onText(/\/done/, async (msg) => {
         doc.image(imageBuffer, 0, 0, { width, height });
         processed++;
 
-        // 📊 Progress update only if more than 20 photos, and every 10
         if (total > 20 && (processed % 10 === 0 || processed === total)) {
           await bot.sendMessage(chatId, `📌 ${processed}/${total} images added.`);
         }
@@ -76,7 +78,6 @@ bot.onText(/\/done/, async (msg) => {
     }
 
     doc.end();
-
     await new Promise((resolve, reject) => {
       writeStream.on('finish', resolve);
       writeStream.on('error', reject);
@@ -88,8 +89,11 @@ bot.onText(/\/done/, async (msg) => {
 
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
+    // Ab agar user extra photos bhejega, toh wo next /done mein aayenge
+    bot.sendMessage(chatId, "📌 Ab aur photos bhejo aur /done karo, sirf naye photos ki PDF banegi.");
+
   } catch (error) {
-    bot.sendMessage(chatId, "❌ Error! Please try again.");
+    bot.sendMessage(chatId, "❌ Error! Try again.");
     console.error(error);
   }
 });
