@@ -7,7 +7,6 @@ const sizeOf = require("image-size");
 
 const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA"; // 👈 Apna token
 
-// Express for 24/7
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running'));
 const port = process.env.PORT || 3000;
@@ -15,16 +14,30 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
+// Keyboard with Create PDF button
+const mainKeyboard = {
+  reply_markup: {
+    keyboard: [
+      [{ text: "📄 Create PDF" }]
+    ],
+    resize_keyboard: true,
+    one_time_keyboard: false
+  }
+};
+
 // Store photos per user
 const userPhotos = {};
-// Processing flag – extra protection against duplicate triggers
 const isProcessing = {};
 
 bot.onText(/\/start/, (msg) => {
   const chatId = msg.chat.id;
   userPhotos[chatId] = [];
   isProcessing[chatId] = false;
-  bot.sendMessage(chatId, "📸 PDF banane ke liye .jpg / .png photos bhejo.\nJab saari photos bhej den, toh /done karo.");
+  bot.sendMessage(
+    chatId,
+    "📸 PDF banane ke liye .jpg / .png photos bhejo.\nJab saari photos bhej den, toh neeche '📄 Create PDF' button dabao.",
+    mainKeyboard
+  );
 });
 
 bot.on("photo", (msg) => {
@@ -32,27 +45,31 @@ bot.on("photo", (msg) => {
   if (!userPhotos[chatId]) userPhotos[chatId] = [];
   const photo = msg.photo[msg.photo.length - 1];
   userPhotos[chatId].push(photo.file_id);
-  bot.sendMessage(chatId, `✅ Photo save (Total: ${userPhotos[chatId].length})`);
+  bot.sendMessage(
+    chatId,
+    `✅ Photo save (Total: ${userPhotos[chatId].length})`,
+    mainKeyboard
+  );
 });
 
-bot.onText(/\/done/, async (msg) => {
+// Handle button click or /done command
+bot.onText(/📄 Create PDF|/\/done/, async (msg) => {
   const chatId = msg.chat.id;
 
-  // Agar already processing hai toh ignore karo
+  // Agar already processing hai toh ignore
   if (isProcessing[chatId]) {
     return bot.sendMessage(chatId, "⏳ Pehle wali PDF abhi ban rahi hai, thoda wait karo...");
   }
 
   if (!userPhotos[chatId] || userPhotos[chatId].length === 0) {
-    return bot.sendMessage(chatId, "❌ Pehle kuch photos bhejo!");
+    return bot.sendMessage(chatId, "❌ Pehle kuch photos bhejo!", mainKeyboard);
   }
 
-  // Processing flag ON
   isProcessing[chatId] = true;
 
-  // Copy photos and clear memory immediately
+  // Copy photos and clear memory
   const photosToProcess = [...userPhotos[chatId]];
-  userPhotos[chatId] = []; // ✅ Purani photos delete
+  userPhotos[chatId] = [];
 
   const total = photosToProcess.length;
   bot.sendMessage(chatId, `⏳ ${total} photos ki ek PDF ban rahi hai...`);
@@ -87,20 +104,22 @@ bot.onText(/\/done/, async (msg) => {
       writeStream.on('error', reject);
     });
 
-    // ✅ Ek hi PDF bhejo
     await bot.sendDocument(chatId, pdfPath, {
       caption: `✅ PDF ready!\n✅ Added: ${processed}\n⚠️ Skipped: ${skipped}`
     });
 
     if (fs.existsSync(pdfPath)) fs.unlinkSync(pdfPath);
 
-    bot.sendMessage(chatId, "📌 Ab nayi photos bhejo aur /done karo – purani delete ho chuki hain.");
+    bot.sendMessage(
+      chatId,
+      "📌 Ab nayi photos bhejo aur '📄 Create PDF' dabao – purani delete ho chuki hain.",
+      mainKeyboard
+    );
 
   } catch (error) {
-    bot.sendMessage(chatId, "❌ Error! Try again.");
+    bot.sendMessage(chatId, "❌ Error! Try again.", mainKeyboard);
     console.error(error);
   } finally {
-    // Processing flag OFF
     isProcessing[chatId] = false;
   }
 });
