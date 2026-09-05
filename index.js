@@ -5,7 +5,7 @@ const fs = require("fs");
 const express = require("express");
 const sizeOf = require("image-size");
 
-const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA"; // 👈 Apna token
+const token = "8526381843:AAGRIq9lAEwb9PYfS4gjoWdrMQGKsCOr8HA"; // 👈 Apna token daalein
 
 const app = express();
 app.get('/', (req, res) => res.send('PDF Bot is Running'));
@@ -14,18 +14,15 @@ app.listen(port, () => console.log(`Server running on port ${port}`));
 
 const bot = new TelegramBot(token, { polling: true });
 
-// Keyboard with Create PDF button
+// Keyboard with "Create PDF" button
 const mainKeyboard = {
   reply_markup: {
-    keyboard: [
-      [{ text: "📄 Create PDF" }]
-    ],
+    keyboard: [[{ text: "📄 Create PDF" }]],
     resize_keyboard: true,
     one_time_keyboard: false
   }
 };
 
-// Store photos per user
 const userPhotos = {};
 const isProcessing = {};
 
@@ -52,11 +49,10 @@ bot.on("photo", (msg) => {
   );
 });
 
-// Handle button click or /done command
+// Handle button click OR /done command
 bot.onText(/📄 Create PDF|/\/done/, async (msg) => {
   const chatId = msg.chat.id;
 
-  // Agar already processing hai toh ignore
   if (isProcessing[chatId]) {
     return bot.sendMessage(chatId, "⏳ Pehle wali PDF abhi ban rahi hai, thoda wait karo...");
   }
@@ -67,7 +63,7 @@ bot.onText(/📄 Create PDF|/\/done/, async (msg) => {
 
   isProcessing[chatId] = true;
 
-  // Copy photos and clear memory
+  // Copy & clear
   const photosToProcess = [...userPhotos[chatId]];
   userPhotos[chatId] = [];
 
@@ -117,7 +113,7 @@ bot.onText(/📄 Create PDF|/\/done/, async (msg) => {
     );
 
   } catch (error) {
-    bot.sendMessage(chatId, "❌ Error! Try again.", mainKeyboard);
+    bot.sendMessage(chatId, "❌ Error! Please try again.", mainKeyboard);
     console.error(error);
   } finally {
     isProcessing[chatId] = false;
